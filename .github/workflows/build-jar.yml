@@ -26,10 +26,6 @@ jobs:
             arch: x86-64
             classifier: win32-x86-64
             libname: primer3_thermo.dll
-          - os: macos-13 # Intel mac
-            arch: x86-64
-            classifier: darwin-x86-64
-            libname: libprimer3_thermo.dylib
           - os: macos-14 # M1/M2/M3 mac
             arch: aarch64
             classifier: darwin-aarch64
