@@ -1,0 +1,134 @@
+name: Build Multi-Platform JAR
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  # ==========================================
+  # Step 1: Compile Native Libraries on Windows, macOS, Linux
+  # ==========================================
+  build-native:
+    name: Build Native (${{ matrix.os }} - ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86-64
+            classifier: linux-x86-64
+            libname: libprimer3_thermo.so
+          - os: windows-latest
+            arch: x86-64
+            classifier: win32-x86-64
+            libname: primer3_thermo.dll
+          - os: macos-13 # Intel mac
+            arch: x86-64
+            classifier: darwin-x86-64
+            libname: libprimer3_thermo.dylib
+          - os: macos-14 # M1/M2/M3 mac
+            arch: aarch64
+            classifier: darwin-aarch64
+            libname: libprimer3_thermo.dylib
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Compile on Linux / macOS
+        if: matrix.os != 'windows-latest'
+        run: |
+          gcc -O3 -shared -fPIC \
+            src/wasm_api.c src/thal.c src/oligotm.c \
+            -Isrc -lm \
+            -o ${{ matrix.libname }}
+
+      - name: Compile on Windows (MinGW)
+        if: matrix.os == 'windows-latest'
+        run: |
+          gcc -O3 -shared \
+            src/wasm_api.c src/thal.c src/oligotm.c \
+            -Isrc \
+            -o ${{ matrix.libname }}
+
+      - name: Upload Native Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.classifier }}
+          path: ${{ matrix.libname }}
+
+  # ==========================================
+  # Step 2: Combine all native libraries and package into a Multi-platform JAR
+  # ==========================================
+  package-jar:
+    name: Package Multi-Platform JAR
+    needs: build-native
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # Prepare JNA resources directory structure
+      - name: Prepare JNA Directory Structure
+        run: |
+          mkdir -p java-wrapper/src/main/resources/linux-x86-64
+          mkdir -p java-wrapper/src/main/resources/win32-x86-64
+          mkdir -p java-wrapper/src/main/resources/darwin-x86-64
+          mkdir -p java-wrapper/src/main/resources/darwin-aarch64
+          mkdir -p java-wrapper/src/main/resources/primer3_config
+
+      # Download and copy Windows DLL
+      - name: Get Windows Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: native-win32-x86-64
+          path: java-wrapper/src/main/resources/win32-x86-64/
+
+      # Download and copy Linux SO
+      - name: Get Linux Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux-x86-64
+          path: java-wrapper/src/main/resources/linux-x86-64/
+
+      # Download and copy macOS Intel dylib
+      - name: Get macOS Intel Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: native-darwin-x86-64
+          path: java-wrapper/src/main/resources/darwin-x86-64/
+
+      # Download and copy macOS ARM dylib
+      - name: Get macOS ARM Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: native-darwin-aarch64
+          path: java-wrapper/src/main/resources/darwin-aarch64/
+
+      # Copy physical parameter config files as jar classpath resources
+      - name: Copy Config Resources
+        run: |
+          cp src/primer3_config/* java-wrapper/src/main/resources/primer3_config/
+
+      - name: Build JAR with Maven
+        run: |
+          cd java-wrapper
+          mvn clean package
+
+      - name: Upload Multi-Platform JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: primer3-thermo-jar
+          path: java-wrapper/target/primer3-thermo-*.jar
