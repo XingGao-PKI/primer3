@@ -80,7 +80,6 @@ jobs:
         run: |
           mkdir -p java-wrapper/src/main/resources/linux-x86-64
           mkdir -p java-wrapper/src/main/resources/win32-x86-64
-          mkdir -p java-wrapper/src/main/resources/darwin-x86-64
           mkdir -p java-wrapper/src/main/resources/darwin-aarch64
           mkdir -p java-wrapper/src/main/resources/primer3_config
 
@@ -97,13 +96,6 @@ jobs:
         with:
           name: native-linux-x86-64
           path: java-wrapper/src/main/resources/linux-x86-64/
-
-      # Download and copy macOS Intel dylib
-      - name: Get macOS Intel Binary
-        uses: actions/download-artifact@v4
-        with:
-          name: native-darwin-x86-64
-          path: java-wrapper/src/main/resources/darwin-x86-64/
 
       # Download and copy macOS ARM dylib
       - name: Get macOS ARM Binary
